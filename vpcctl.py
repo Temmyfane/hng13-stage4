@@ -120,7 +120,7 @@ class VPC:
         
         # Connect host end to bridge
         run_cmd(f"ip link set {veth_host} master {self.bridge}", ignore_exists=True)
-        run_cmd(f"ip link set {veth_host} up")
+        run_cmd(f"ip link set {veth_host} up", ignore_exists=True)
         
         # Move namespace end into namespace
         run_cmd(f"ip link set {veth_ns} netns {ns_name}", ignore_exists=True)
