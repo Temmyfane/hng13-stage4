@@ -126,8 +126,8 @@ class VPC:
         # Configure namespace interface
         subnet_ip = IPUtils.get_subnet_ip(cidr)
         run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}", ignore_exists=True)
-        run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up")
-        run_cmd(f"ip netns exec {ns_name} ip link set lo up")
+        run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up", ignore_exists=True)
+        run_cmd(f"ip netns exec {ns_name} ip link set lo up", ignore_exists=True)
         
         # Add default route through bridge
         gateway_ip = IPUtils.get_gateway_ip(self.cidr)
