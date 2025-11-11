@@ -61,8 +61,13 @@ def run_cmd(cmd, check=True, capture=True, ignore_exists=False):
         )
         return result.stdout if capture else None
     except subprocess.CalledProcessError as e:
-        # Handle "File exists" errors gracefully if requested
-        if ignore_exists and ("File exists" in str(e.stderr) or "RTNETLINK answers: File exists" in str(e.stderr)):
+        # Handle "already exists" errors gracefully if requested
+        if ignore_exists and (
+            "File exists" in str(e.stderr) or 
+            "RTNETLINK answers: File exists" in str(e.stderr) or
+            "Address already assigned" in str(e.stderr) or
+            "already exists" in str(e.stderr)
+        ):
             Logger.warn(f"Resource already exists, continuing: {cmd}")
             return None
         
