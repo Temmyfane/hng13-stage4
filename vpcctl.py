@@ -333,6 +333,7 @@ def main():
         print("  cleanup-orphans                   - Clean up orphaned resources")
         print("  recover                           - Recover VPC configs from existing infrastructure")
         print("  fix-connectivity <vpc>            - Fix network connectivity for VPC")
+        print("  debug-servers <vpc>               - Debug web server connectivity")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -575,6 +576,73 @@ def main():
             
             print(f"✓ Connectivity fixed for VPC {vpc_name}")
             print("Web servers should now be accessible from host")
+        
+        elif command == "debug-servers":
+            # Debug web server connectivity
+            vpc_name = sys.argv[2] if len(sys.argv) > 2 else None
+            if not vpc_name:
+                print("Usage: vpcctl debug-servers <vpc-name>")
+                sys.exit(1)
+            
+            print(f"\nDebugging web servers for VPC: {vpc_name}")
+            vpc = VPC.load(vpc_name)
+            
+            for subnet_name, subnet_info in vpc.subnets.items():
+                ns_name = subnet_info["namespace"]
+                print(f"\n--- Debugging {subnet_name} ({ns_name}) ---")
+                
+                # Check if namespace exists
+                result = run_cmd("ip netns list", capture_output=True)
+                if ns_name in result.stdout:
+                    print(f"✓ Namespace {ns_name} exists")
+                else:
+                    print(f"✗ Namespace {ns_name} missing")
+                    continue
+                
+                # Check running processes in namespace
+                print("Running processes:")
+                result = run_cmd(f"ip netns exec {ns_name} ps aux", capture_output=True, ignore_errors=True)
+                if result and result.stdout:
+                    for line in result.stdout.split('\n'):
+                        if 'http.server' in line:
+                            print(f"  {line.strip()}")
+                
+                # Check network interfaces in namespace
+                print("Network interfaces:")
+                result = run_cmd(f"ip netns exec {ns_name} ip addr show", capture_output=True, ignore_errors=True)
+                if result and result.stdout:
+                    for line in result.stdout.split('\n'):
+                        if 'inet ' in line:
+                            print(f"  {line.strip()}")
+                
+                # Check listening ports
+                print("Listening ports:")
+                result = run_cmd(f"ip netns exec {ns_name} netstat -tlnp", capture_output=True, ignore_errors=True)
+                if result and result.stdout:
+                    for line in result.stdout.split('\n'):
+                        if ':800' in line:  # Look for ports 8000-8009
+                            print(f"  {line.strip()}")
+                
+                # Test connectivity from namespace to gateway
+                gateway_ip = IPUtils.get_gateway_ip(vpc.cidr).split('/')[0]
+                print(f"Testing connectivity to gateway {gateway_ip}:")
+                result = run_cmd(f"ip netns exec {ns_name} ping -c 1 {gateway_ip}", capture_output=True, ignore_errors=True)
+                if result and result.returncode == 0:
+                    print("  ✓ Can reach gateway")
+                else:
+                    print("  ✗ Cannot reach gateway")
+            
+            # Test from host side
+            print(f"\n--- Host connectivity test ---")
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                subnet_ip = subnet_cidr.split('/')[0].rsplit('.', 1)[0] + '.1'
+                print(f"Testing ping to {subnet_name} at {subnet_ip}:")
+                result = run_cmd(f"ping -c 1 {subnet_ip}", capture_output=True, ignore_errors=True)
+                if result and result.returncode == 0:
+                    print("  ✓ Ping successful")
+                else:
+                    print("  ✗ Ping failed")
         
         else:
             Logger.error(f"Unknown command: {command}")
