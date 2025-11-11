@@ -41,7 +41,7 @@ echo "Setting up test environment..."
 
 # Detect primary network interface
 PRIMARY_IF=$(ip route | grep default | awk '{print $5}' | head -n1)
-./vpcctl enable-nat test-vpc "$PRIMARY_IF"
+./vpcctl.py enable-nat test-vpc "$PRIMARY_IF"
 
 sleep 2
 
