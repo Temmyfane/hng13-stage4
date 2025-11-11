@@ -110,7 +110,7 @@ class VPC:
         
         ns_name = f"{self.name}-{subnet_name}"
         veth_host = f"veth-{subnet_name}"
-        veth_ns = f"veth-{subnet_name}-ns"
+        veth_ns = f"v{subnet_name[:10]}"  # Keep it short for Linux interface name limits
         
         # Create network namespace
         run_cmd(f"ip netns add {ns_name}", ignore_exists=True)
