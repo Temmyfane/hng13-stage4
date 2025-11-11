@@ -545,9 +545,11 @@ def main():
                 
                 print(f"Fixing connectivity for subnet {subnet_name} ({ns_name})")
                 
-                # Create veth pair if it doesn't exist
-                veth_host = f"veth-{ns_name}"
-                veth_ns = f"veth-{ns_name}-ns"
+                # Create veth pair if it doesn't exist (use shorter names)
+                # Extract short identifier from namespace name
+                short_id = ns_name.replace('dev-', '').replace('prod-', '')[:6]
+                veth_host = f"vh-{short_id}"
+                veth_ns = f"vn-{short_id}"
                 
                 # Try to create veth pair (ignore if exists)
                 run_cmd(f"ip link add {veth_host} type veth peer name {veth_ns}", ignore_exists=True)
