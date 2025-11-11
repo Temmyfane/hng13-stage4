@@ -35,9 +35,9 @@ test_result() {
 
 # Setup test environment
 echo "Setting up test environment..."
-./vpcctl create test-vpc 10.0.0.0/16
-./vpcctl add-subnet test-vpc public 10.0.1.0/24 public
-./vpcctl add-subnet test-vpc private 10.0.2.0/24 private
+./vpcctl.py create test-vpc 10.0.0.0/16
+./vpcctl.py add-subnet test-vpc public 10.0.1.0/24 public
+./vpcctl.py add-subnet test-vpc private 10.0.2.0/24 private
 
 # Detect primary network interface
 PRIMARY_IF=$(ip route | grep default | awk '{print $5}' | head -n1)
@@ -98,15 +98,15 @@ fi
 
 # Test 8: Deploy web server
 echo "Test 8: Web server deployment"
-./vpcctl deploy-web test-vpc public 8000
+./vpcctl.py deploy-web test-vpc public 8000
 sleep 2
 ip netns exec test-vpc-public curl -s http://10.0.1.10:8000 | grep -q "Hello from public"
 test_result $? "Web server deployed and accessible"
 
 # Test 9: Create second VPC for isolation test
 echo "Test 9: VPC isolation"
-./vpcctl create test-vpc2 10.1.0.0/16
-./vpcctl add-subnet test-vpc2 public2 10.1.1.0/24 public
+./vpcctl.py create test-vpc2 10.1.0.0/16
+./vpcctl.py add-subnet test-vpc2 public2 10.1.1.0/24 public
 sleep 1
 ip netns exec test-vpc-public ping -c 1 -W 1 10.1.1.10 > /dev/null 2>&1
 if [ $? -ne 0 ]; then
@@ -122,7 +122,7 @@ test_result $? "Default route configured correctly"
 
 # Test 11: VPC configuration saved
 echo "Test 11: VPC configuration persistence"
-[ -f ~/.vpcctl/test-vpc.json ]
+[ -f ~/.vpcctl.py/test-vpc.json ]
 test_result $? "VPC configuration file saved"
 
 # Test 12: Firewall policy application
@@ -135,7 +135,7 @@ cat > /tmp/test-policy.json << 'EOF'
   ]
 }
 EOF
-./vpcctl apply-policy test-vpc /tmp/test-policy.json
+./vpcctl.py apply-policy test-vpc /tmp/test-policy.json
 ip netns exec test-vpc-public iptables -L INPUT -n | grep -q "9999"
 test_result $? "Firewall policy applied correctly"
 
@@ -149,8 +149,8 @@ echo ""
 
 # Cleanup
 echo "Cleaning up test environment..."
-./vpcctl delete test-vpc
-./vpcctl delete test-vpc2 2>/dev/null || true
+./vpcctl.py delete test-vpc
+./vpcctl.py delete test-vpc2 2>/dev/null || true
 rm -f /tmp/test-policy.json
 
 if [ $FAILED -eq 0 ]; then
