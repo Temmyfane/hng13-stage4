@@ -1,0 +1,31 @@
+{
+  "subnet": "10.0.1.0/24",
+  "description": "Firewall policy for public subnet",
+  "ingress": [
+    {
+      "port": 80,
+      "protocol": "tcp",
+      "action": "allow",
+      "comment": "Allow HTTP traffic"
+    },
+    {
+      "port": 443,
+      "protocol": "tcp",
+      "action": "allow",
+      "comment": "Allow HTTPS traffic"
+    },
+    {
+      "port": 22,
+      "protocol": "tcp",
+      "action": "deny",
+      "comment": "Block SSH for security"
+    },
+    {
+      "port": 8000,
+      "protocol": "tcp",
+      "action": "allow",
+      "comment": "Allow custom web server"
+    }
+  ],
+  "egress": []
+}
