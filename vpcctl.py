@@ -330,7 +330,7 @@ def main():
         print("  delete <vpc>                      - Delete VPC")
         print("  list                              - List all VPCs")
         print("  diagnose                          - Diagnose network state")
-<parameter name="cleanup-orphans                   - Clean up orphaned resources")
+        print("  cleanup-orphans                   - Clean up orphaned resources")
         print("  recover                           - Recover VPC configs from existing infrastructure")
         sys.exit(1)
     
