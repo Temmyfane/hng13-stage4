@@ -48,18 +48,22 @@ class Logger:
     def warn(msg):
         print(f"[WARN] ⚠ {msg}")
 
-def run_cmd(cmd, check=True, capture=True, ignore_exists=False):
+def run_cmd(cmd, check=True, capture=True, ignore_exists=False, ignore_errors=False, capture_output=False):
     """Execute shell command with logging"""
     Logger.info(f"Executing: {cmd}")
     try:
-        result = subprocess.run(
-            cmd, 
-            shell=True, 
-            check=check,
-            capture_output=capture,
-            text=True
-        )
-        return result.stdout if capture else None
+        if capture_output:
+            result = subprocess.run(cmd, shell=True, check=check, capture_output=True, text=True)
+            return result
+        else:
+            result = subprocess.run(
+                cmd, 
+                shell=True, 
+                check=check,
+                capture_output=capture,
+                text=True
+            )
+            return result.stdout if capture else None
     except subprocess.CalledProcessError as e:
         # Handle "already exists" or "not found" errors gracefully if requested
         if ignore_exists and (
@@ -72,6 +76,11 @@ def run_cmd(cmd, check=True, capture=True, ignore_exists=False):
             "Attribute failed policy validation" in str(e.stderr)
         ):
             Logger.warn(f"Resource already configured, continuing: {cmd}")
+            return None
+        
+        # Ignore all errors if requested (for cleanup operations)
+        if ignore_errors:
+            Logger.warn(f"Command failed but ignoring: {cmd}")
             return None
         
         Logger.error(f"Command failed: {e}")
@@ -320,6 +329,8 @@ def main():
         print("  show <vpc>                        - Show VPC details")
         print("  delete <vpc>                      - Delete VPC")
         print("  list                              - List all VPCs")
+        print("  diagnose                          - Diagnose network state")
+        print("  cleanup-orphans                   - Clean up orphaned resources")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -376,6 +387,60 @@ def main():
                     print(f"  - {vpc_file.stem}")
             else:
                 print("\nNo VPCs configured")
+        
+        elif command == "diagnose":
+            # Diagnostic command to check orphaned namespaces
+            print("\nDiagnosing network state...")
+            result = run_cmd("ip netns list", capture_output=True)
+            namespaces = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            
+            print(f"\nFound {len(namespaces)} network namespaces:")
+            for ns in namespaces:
+                ns_name = ns.split()[0] if ns.strip() else ""
+                if ns_name:
+                    print(f"  - {ns_name}")
+            
+            # Check for VPC bridges
+            result = run_cmd("ip link show type bridge", capture_output=True)
+            bridges = []
+            for line in result.stdout.split('\n'):
+                if 'vpc-' in line:
+                    bridge_name = line.split(':')[1].strip().split('@')[0]
+                    bridges.append(bridge_name)
+            
+            print(f"\nFound {len(bridges)} VPC bridges:")
+            for bridge in bridges:
+                print(f"  - {bridge}")
+            
+            # Suggest recovery
+            if namespaces and not vpcs:
+                print("\n⚠️  Found orphaned namespaces without VPC config!")
+                print("   Run 'vpcctl cleanup-orphans' to clean up")
+                print("   Or recreate VPCs to restore connectivity")
+        
+        elif command == "cleanup-orphans":
+            # Clean up orphaned namespaces and bridges
+            print("\nCleaning up orphaned network resources...")
+            
+            # Remove namespaces
+            result = run_cmd("ip netns list", capture_output=True)
+            namespaces = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            
+            for ns in namespaces:
+                ns_name = ns.split()[0] if ns.strip() else ""
+                if ns_name and ('-public' in ns_name or '-private' in ns_name):
+                    print(f"Removing namespace: {ns_name}")
+                    run_cmd(f"ip netns delete {ns_name}", ignore_errors=True)
+            
+            # Remove VPC bridges
+            result = run_cmd("ip link show type bridge", capture_output=True)
+            for line in result.stdout.split('\n'):
+                if 'vpc-' in line:
+                    bridge_name = line.split(':')[1].strip().split('@')[0]
+                    print(f"Removing bridge: {bridge_name}")
+                    run_cmd(f"ip link delete {bridge_name}", ignore_errors=True)
+            
+            print("✓ Cleanup complete")
         
         else:
             Logger.error(f"Unknown command: {command}")
