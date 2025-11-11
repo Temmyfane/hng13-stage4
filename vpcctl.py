@@ -48,7 +48,7 @@ class Logger:
     def warn(msg):
         print(f"[WARN] ⚠ {msg}")
 
-def run_cmd(cmd, check=True, capture=True):
+def run_cmd(cmd, check=True, capture=True, ignore_exists=False):
     """Execute shell command with logging"""
     Logger.info(f"Executing: {cmd}")
     try:
@@ -61,6 +61,11 @@ def run_cmd(cmd, check=True, capture=True):
         )
         return result.stdout if capture else None
     except subprocess.CalledProcessError as e:
+        # Handle "File exists" errors gracefully if requested
+        if ignore_exists and ("File exists" in str(e.stderr) or "RTNETLINK answers: File exists" in str(e.stderr)):
+            Logger.warn(f"Resource already exists, continuing: {cmd}")
+            return None
+        
         Logger.error(f"Command failed: {e}")
         if capture:
             Logger.error(f"Output: {e.stderr}")
@@ -81,12 +86,12 @@ class VPC:
         Logger.info(f"Creating VPC: {self.name} with CIDR: {self.cidr}")
         
         # Create bridge (acts as VPC router)
-        run_cmd(f"ip link add {self.bridge} type bridge")
+        run_cmd(f"ip link add {self.bridge} type bridge", ignore_exists=True)
         run_cmd(f"ip link set {self.bridge} up")
         
         # Assign gateway IP to bridge (first IP in range)
         gateway_ip = IPUtils.get_gateway_ip(self.cidr)
-        run_cmd(f"ip addr add {gateway_ip}/{self.cidr.split('/')[1]} dev {self.bridge}")
+        run_cmd(f"ip addr add {gateway_ip}/{self.cidr.split('/')[1]} dev {self.bridge}", ignore_exists=True)
         
         Logger.success(f"VPC {self.name} created with bridge {self.bridge}")
         self.save_config()
@@ -100,27 +105,27 @@ class VPC:
         veth_ns = f"eth0"
         
         # Create network namespace
-        run_cmd(f"ip netns add {ns_name}")
+        run_cmd(f"ip netns add {ns_name}", ignore_exists=True)
         
         # Create veth pair (virtual ethernet cable)
-        run_cmd(f"ip link add {veth_host} type veth peer name {veth_ns}")
+        run_cmd(f"ip link add {veth_host} type veth peer name {veth_ns}", ignore_exists=True)
         
         # Connect host end to bridge
-        run_cmd(f"ip link set {veth_host} master {self.bridge}")
+        run_cmd(f"ip link set {veth_host} master {self.bridge}", ignore_exists=True)
         run_cmd(f"ip link set {veth_host} up")
         
         # Move namespace end into namespace
-        run_cmd(f"ip link set {veth_ns} netns {ns_name}")
+        run_cmd(f"ip link set {veth_ns} netns {ns_name}", ignore_exists=True)
         
         # Configure namespace interface
         subnet_ip = IPUtils.get_subnet_ip(cidr)
-        run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}")
+        run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}", ignore_exists=True)
         run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up")
         run_cmd(f"ip netns exec {ns_name} ip link set lo up")
         
         # Add default route through bridge
         gateway_ip = IPUtils.get_gateway_ip(self.cidr)
-        run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip}")
+        run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip}", ignore_exists=True)
         
         # Store subnet info
         self.subnets[subnet_name] = {
