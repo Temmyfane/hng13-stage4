@@ -229,15 +229,15 @@ class VPC:
         ns_name = self.subnets[subnet_name]["namespace"]
         Logger.info(f"Deploying web server in {subnet_name} on port {port}")
         
-        # Create a simple index.html
+        # Create a simple index.html and start server on all interfaces
+        subnet_cidr = self.subnets[subnet_name]["cidr"]
+        subnet_ip = IPUtils.get_subnet_ip(subnet_cidr).split('/')[0]
         cmd = f"""ip netns exec {ns_name} sh -c '
             mkdir -p /tmp/www
             echo "<h1>Hello from {subnet_name} in VPC {self.name}</h1>" > /tmp/www/index.html
-            cd /tmp/www && python3 -m http.server {port} > /tmp/webserver.log 2>&1 &
+            cd /tmp/www && python3 -m http.server {port} --bind {subnet_ip} > /tmp/webserver.log 2>&1 &
         '"""
         run_cmd(cmd)
-        
-        subnet_ip = self.subnets[subnet_name]["ip"].split('/')[0]
         Logger.success(f"Web server deployed at http://{subnet_ip}:{port}")
     
     def delete(self):
