@@ -661,12 +661,18 @@ def main():
             
             # Configure bridge properly
             bridge = vpc.bridge
-            gateway_ip = IPUtils.get_gateway_ip(vpc.cidr)
             
             print(f"Configuring bridge {bridge}...")
             run_cmd(f"ip link set {bridge} up", ignore_errors=True)
             run_cmd(f"ip addr flush dev {bridge}", ignore_errors=True)
-            run_cmd(f"ip addr add {gateway_ip} dev {bridge}", ignore_errors=True)
+            
+            # Add gateway IPs for each subnet to the bridge
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                gateway_ip = str(network.network_address + 1) + f"/{network.prefixlen}"
+                run_cmd(f"ip addr add {gateway_ip} dev {bridge}", ignore_exists=True)
+                print(f"Added gateway {gateway_ip} for {subnet_name}")
             
             # Enable bridge forwarding
             run_cmd(f"echo 1 > /sys/class/net/{bridge}/bridge/stp_state", ignore_errors=True)
@@ -678,9 +684,9 @@ def main():
                 
                 print(f"Fixing {subnet_name} connectivity...")
                 
-                # Get the correct subnet IP (first usable IP in range)
+                # Get the correct subnet IP (second IP, since first is gateway)
                 network = ipaddress.IPv4Network(subnet_cidr, strict=False)
-                subnet_ip = str(list(network.hosts())[0]) + f"/{network.prefixlen}"
+                subnet_ip = str(list(network.hosts())[1]) + f"/{network.prefixlen}"
                 
                 # Remove old veth pairs
                 short_id = ns_name.replace('dev-', '').replace('prod-', '')[:6]
@@ -705,7 +711,11 @@ def main():
                 run_cmd(f"ip netns exec {ns_name} ip addr flush dev {veth_ns}")
                 run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}")
                 run_cmd(f"ip netns exec {ns_name} ip route flush default")
-                run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip.split('/')[0]}")
+                
+                # Use the gateway IP that's in the same subnet  
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                subnet_gateway = str(network.network_address + 1)  # First IP in subnet as gateway
+                run_cmd(f"ip netns exec {ns_name} ip route add default via {subnet_gateway}", ignore_exists=True)
                 
                 print(f"✓ Fixed {subnet_name} - IP: {subnet_ip}")
             
