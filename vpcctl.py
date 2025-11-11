@@ -69,7 +69,7 @@ def run_cmd(cmd, check=True, capture=True, ignore_exists=False):
             "already exists" in str(e.stderr) or
             "Cannot find device" in str(e.stderr) or
             "Nexthop has invalid gateway" in str(e.stderr) or
-            "RTNETLINK answers: File exists" in str(e.stderr)
+            "Attribute failed policy validation" in str(e.stderr)
         ):
             Logger.warn(f"Resource already configured, continuing: {cmd}")
             return None
