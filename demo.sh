@@ -15,20 +15,20 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Make vpcctl executable
-chmod +x vpcctl
+chmod +x vpcctl.py
 
 echo "Step 1: Creating VPC 'dev' with CIDR 10.0.0.0/16"
-./vpcctl create dev 10.0.0.0/16
+./vpcctl.py create dev 10.0.0.0/16
 sleep 1
 
 echo ""
 echo "Step 2: Adding public subnet (10.0.1.0/24)"
-./vpcctl add-subnet dev public 10.0.1.0/24 public
+./vpcctl.py add-subnet dev public 10.0.1.0/24 public
 sleep 1
 
 echo ""
 echo "Step 3: Adding private subnet (10.0.2.0/24)"
-./vpcctl add-subnet dev private 10.0.2.0/24 private
+./vpcctl.py add-subnet dev private 10.0.2.0/24 private
 sleep 1
 
 echo ""
@@ -36,30 +36,30 @@ echo "Step 4: Enabling NAT gateway"
 # Detect primary network interface
 PRIMARY_IF=$(ip route | grep default | awk '{print $5}' | head -n1)
 echo "Using interface: $PRIMARY_IF"
-./vpcctl enable-nat dev "$PRIMARY_IF"
+./vpcctl.py enable-nat dev "$PRIMARY_IF"
 sleep 1
 
 echo ""
 echo "Step 5: Deploying web server in public subnet"
-./vpcctl deploy-web dev public 8000
+./vpcctl.py deploy-web dev public 8000
 sleep 2
 
 echo ""
 echo "Step 6: Deploying web server in private subnet"
-./vpcctl deploy-web dev private 8001
+./vpcctl.py deploy-web dev private 8001
 sleep 2
 
 echo ""
 echo "Step 7: Creating second VPC 'prod' for isolation test"
-./vpcctl create prod 10.1.0.0/16
-./vpcctl add-subnet prod prod-public 10.1.1.0/24 public
-./vpcctl deploy-web prod prod-public 8002
+./vpcctl.py create prod 10.1.0.0/16
+./vpcctl.py add-subnet prod prod-public 10.1.1.0/24 public
+./vpcctl.py deploy-web prod prod-public 8002
 sleep 2
 
 echo ""
 echo "Step 8: Showing VPC configuration"
-./vpcctl show dev
-./vpcctl show prod
+./vpcctl.py show dev
+./vpcctl.py show prod
 
 echo ""
 echo "=========================================="
@@ -97,8 +97,8 @@ echo "Demo Complete!"
 echo "=========================================="
 echo ""
 echo "Your VPCs are running. You can:"
-echo "1. List VPCs: ./vpcctl list"
-echo "2. Show details: ./vpcctl show dev"
+echo "1. List VPCs: ./vpcctl.py list"
+echo "2. Show details: ./vpcctl.py show dev"
 echo "3. Access web servers from host:"
 echo "   - curl http://10.0.1.10:8000"
 echo "   - curl http://10.0.2.10:8001"
