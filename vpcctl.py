@@ -335,6 +335,7 @@ def main():
         print("  fix-connectivity <vpc>            - Fix network connectivity for VPC")
         print("  debug-servers <vpc>               - Debug web server connectivity")
         print("  fix-bridge <vpc>                  - Fix bridge connectivity issues")
+        print("  redeploy-web <vpc>                - Redeploy web servers with correct content")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -739,6 +740,50 @@ def main():
                     print(f"✓ {subnet_name} ({test_ip}) - Connectivity OK")
                 else:
                     print(f"✗ {subnet_name} ({test_ip}) - Still no connectivity")
+        
+        elif command == "redeploy-web":
+            # Redeploy web servers with correct IPs and content
+            vpc_name = sys.argv[2] if len(sys.argv) > 2 else None
+            if not vpc_name:
+                print("Usage: vpcctl redeploy-web <vpc-name>")
+                sys.exit(1)
+            
+            print(f"\nRedeploying web servers for VPC: {vpc_name}")
+            vpc = VPC.load(vpc_name)
+            
+            port = 8000
+            for subnet_name, subnet_info in vpc.subnets.items():
+                ns_name = subnet_info["namespace"]
+                subnet_cidr = subnet_info["cidr"]
+                
+                # Kill existing servers in this namespace
+                print(f"Stopping existing servers in {ns_name}...")
+                run_cmd(f"ip netns exec {ns_name} pkill -f 'python3 -m http.server'", ignore_errors=True)
+                
+                # Get the correct IP (second IP in subnet)
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                server_ip = str(list(network.hosts())[1])
+                
+                # Deploy new server
+                print(f"Deploying web server for {subnet_name} at {server_ip}:{port}")
+                cmd = f"""ip netns exec {ns_name} sh -c '
+                    mkdir -p /tmp/www-{subnet_name}
+                    echo "<h1>Hello from {subnet_name} in VPC {vpc_name}</h1><p>Server IP: {server_ip}:{port}</p>" > /tmp/www-{subnet_name}/index.html
+                    cd /tmp/www-{subnet_name} && python3 -m http.server {port} --bind {server_ip} > /tmp/webserver-{subnet_name}.log 2>&1 &
+                '"""
+                run_cmd(cmd)
+                print(f"✓ Web server deployed at http://{server_ip}:{port}")
+                port += 1
+            
+            print(f"\n✓ All web servers redeployed for VPC {vpc_name}")
+            print("Test with:")
+            port = 8000
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                server_ip = str(list(network.hosts())[1])
+                print(f"  curl http://{server_ip}:{port}  # {subnet_name}")
+                port += 1
         
         else:
             Logger.error(f"Unknown command: {command}")
