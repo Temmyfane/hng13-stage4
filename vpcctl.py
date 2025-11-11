@@ -334,6 +334,7 @@ def main():
         print("  recover                           - Recover VPC configs from existing infrastructure")
         print("  fix-connectivity <vpc>            - Fix network connectivity for VPC")
         print("  debug-servers <vpc>               - Debug web server connectivity")
+        print("  fix-bridge <vpc>                  - Fix bridge connectivity issues")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -643,6 +644,91 @@ def main():
                     print("  ✓ Ping successful")
                 else:
                     print("  ✗ Ping failed")
+        
+        elif command == "fix-bridge":
+            # Fix bridge connectivity issues
+            vpc_name = sys.argv[2] if len(sys.argv) > 2 else None
+            if not vpc_name:
+                print("Usage: vpcctl fix-bridge <vpc-name>")
+                sys.exit(1)
+            
+            print(f"\nFixing bridge connectivity for VPC: {vpc_name}")
+            vpc = VPC.load(vpc_name)
+            
+            # Enable IP forwarding
+            print("Enabling IP forwarding...")
+            run_cmd("echo 1 > /proc/sys/net/ipv4/ip_forward", ignore_errors=True)
+            
+            # Configure bridge properly
+            bridge = vpc.bridge
+            gateway_ip = IPUtils.get_gateway_ip(vpc.cidr)
+            
+            print(f"Configuring bridge {bridge}...")
+            run_cmd(f"ip link set {bridge} up", ignore_errors=True)
+            run_cmd(f"ip addr flush dev {bridge}", ignore_errors=True)
+            run_cmd(f"ip addr add {gateway_ip} dev {bridge}", ignore_errors=True)
+            
+            # Enable bridge forwarding
+            run_cmd(f"echo 1 > /sys/class/net/{bridge}/bridge/stp_state", ignore_errors=True)
+            
+            # Fix each subnet connection
+            for subnet_name, subnet_info in vpc.subnets.items():
+                ns_name = subnet_info["namespace"]
+                subnet_cidr = subnet_info["cidr"]
+                
+                print(f"Fixing {subnet_name} connectivity...")
+                
+                # Get the correct subnet IP (first usable IP in range)
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                subnet_ip = str(list(network.hosts())[0]) + f"/{network.prefixlen}"
+                
+                # Remove old veth pairs
+                short_id = ns_name.replace('dev-', '').replace('prod-', '')[:6]
+                veth_host = f"vh-{short_id}"
+                veth_ns = f"vn-{short_id}"
+                
+                run_cmd(f"ip link delete {veth_host}", ignore_errors=True)
+                
+                # Create new veth pair
+                run_cmd(f"ip link add {veth_host} type veth peer name {veth_ns}")
+                
+                # Move namespace end to namespace
+                run_cmd(f"ip link set {veth_ns} netns {ns_name}")
+                
+                # Configure host side
+                run_cmd(f"ip link set {veth_host} master {bridge}")
+                run_cmd(f"ip link set {veth_host} up")
+                
+                # Configure namespace side
+                run_cmd(f"ip netns exec {ns_name} ip link set lo up")
+                run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up")
+                run_cmd(f"ip netns exec {ns_name} ip addr flush dev {veth_ns}")
+                run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}")
+                run_cmd(f"ip netns exec {ns_name} ip route flush default")
+                run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip.split('/')[0]}")
+                
+                print(f"✓ Fixed {subnet_name} - IP: {subnet_ip}")
+            
+            # Add host routes
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                run_cmd(f"ip route del {subnet_cidr}", ignore_errors=True)
+                run_cmd(f"ip route add {subnet_cidr} dev {bridge}")
+            
+            print("✓ Bridge connectivity fixed!")
+            print("Testing connectivity...")
+            
+            # Quick connectivity test
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+                test_ip = str(list(network.hosts())[0])
+                
+                result = run_cmd(f"ping -c 1 -W 2 {test_ip}", capture_output=True, ignore_errors=True)
+                if result and result.returncode == 0:
+                    print(f"✓ {subnet_name} ({test_ip}) - Connectivity OK")
+                else:
+                    print(f"✗ {subnet_name} ({test_ip}) - Still no connectivity")
         
         else:
             Logger.error(f"Unknown command: {command}")
