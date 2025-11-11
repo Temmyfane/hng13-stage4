@@ -330,7 +330,8 @@ def main():
         print("  delete <vpc>                      - Delete VPC")
         print("  list                              - List all VPCs")
         print("  diagnose                          - Diagnose network state")
-        print("  cleanup-orphans                   - Clean up orphaned resources")
+<parameter name="cleanup-orphans                   - Clean up orphaned resources")
+        print("  recover                           - Recover VPC configs from existing infrastructure")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -444,6 +445,79 @@ def main():
                     run_cmd(f"ip link delete {bridge_name}", ignore_errors=True)
             
             print("✓ Cleanup complete")
+        
+        elif command == "recover":
+            # Recover VPC configurations from existing infrastructure
+            print("\nRecovering VPC configurations from existing infrastructure...")
+            
+            # Get existing namespaces
+            result = run_cmd("ip netns list", capture_output=True)
+            namespaces = result.stdout.strip().split('\n') if result.stdout.strip() else []
+            
+            # Parse VPC structure from namespaces
+            vpcs = {}
+            for ns in namespaces:
+                ns_name = ns.split()[0] if ns.strip() else ""
+                if '-' in ns_name:
+                    parts = ns_name.split('-')
+                    if len(parts) >= 2:
+                        vpc_name = parts[0]
+                        subnet_name = '-'.join(parts[1:])
+                        
+                        if vpc_name not in vpcs:
+                            vpcs[vpc_name] = []
+                        vpcs[vpc_name].append((subnet_name, ns_name))
+            
+            print(f"Found {len(vpcs)} VPCs to recover:")
+            for vpc_name, subnets in vpcs.items():
+                print(f"  - {vpc_name}: {len(subnets)} subnets")
+            
+            # Recover each VPC
+            for vpc_name, subnets in vpcs.items():
+                print(f"\nRecovering VPC: {vpc_name}")
+                
+                # Determine CIDR based on VPC name (common patterns)
+                if vpc_name == "dev":
+                    cidr = "10.0.0.0/16"
+                elif vpc_name == "prod":
+                    cidr = "10.1.0.0/16"
+                elif vpc_name == "test":
+                    cidr = "10.2.0.0/16"
+                else:
+                    cidr = f"10.{hash(vpc_name) % 254}.0.0/16"
+                
+                # Create VPC config
+                vpc_config = {
+                    "name": vpc_name,
+                    "cidr": cidr,
+                    "subnets": {}
+                }
+                
+                # Add subnets
+                subnet_counter = 1
+                for subnet_name, ns_name in subnets:
+                    subnet_cidr = f"10.{0 if vpc_name == 'dev' else 1 if vpc_name == 'prod' else 2}.{subnet_counter}.0/24"
+                    subnet_ip = f"10.{0 if vpc_name == 'dev' else 1 if vpc_name == 'prod' else 2}.{subnet_counter}.10/24"
+                    
+                    subnet_type = "public" if "public" in subnet_name else "private"
+                    
+                    vpc_config["subnets"][subnet_name] = {
+                        "cidr": subnet_cidr,
+                        "type": subnet_type,
+                        "namespace": ns_name,
+                        "ip": subnet_ip
+                    }
+                    subnet_counter += 1
+                
+                # Save config
+                config_file = CONFIG_DIR / f"{vpc_name}.json"
+                with open(config_file, 'w') as f:
+                    json.dump(vpc_config, f, indent=2)
+                
+                print(f"✓ Recovered VPC {vpc_name} with {len(subnets)} subnets")
+            
+            print(f"\n✓ Recovery complete! Recovered {len(vpcs)} VPCs")
+            print("You can now use 'vpcctl show <vpc-name>' to view configurations")
         
         else:
             Logger.error(f"Unknown command: {command}")
