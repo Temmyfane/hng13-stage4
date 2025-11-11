@@ -332,6 +332,7 @@ def main():
         print("  diagnose                          - Diagnose network state")
         print("  cleanup-orphans                   - Clean up orphaned resources")
         print("  recover                           - Recover VPC configs from existing infrastructure")
+        print("  fix-connectivity <vpc>            - Fix network connectivity for VPC")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -518,6 +519,60 @@ def main():
             
             print(f"\n✓ Recovery complete! Recovered {len(vpcs)} VPCs")
             print("You can now use 'vpcctl show <vpc-name>' to view configurations")
+        
+        elif command == "fix-connectivity":
+            # Fix connectivity issues for recovered VPCs
+            vpc_name = sys.argv[2] if len(sys.argv) > 2 else None
+            if not vpc_name:
+                print("Usage: vpcctl fix-connectivity <vpc-name>")
+                sys.exit(1)
+            
+            print(f"\nFixing connectivity for VPC: {vpc_name}")
+            vpc = VPC.load(vpc_name)
+            
+            # Ensure bridge is up and has gateway IP
+            gateway_ip = IPUtils.get_gateway_ip(vpc.cidr)
+            print(f"Setting up bridge {vpc.bridge} with gateway {gateway_ip}")
+            
+            run_cmd(f"ip link set {vpc.bridge} up", ignore_errors=True)
+            run_cmd(f"ip addr add {gateway_ip} dev {vpc.bridge}", ignore_exists=True)
+            
+            # Fix each subnet's connectivity
+            for subnet_name, subnet_info in vpc.subnets.items():
+                ns_name = subnet_info["namespace"]
+                subnet_cidr = subnet_info["cidr"]
+                subnet_ip = subnet_info["ip"]
+                
+                print(f"Fixing connectivity for subnet {subnet_name} ({ns_name})")
+                
+                # Create veth pair if it doesn't exist
+                veth_host = f"veth-{ns_name}"
+                veth_ns = f"veth-{ns_name}-ns"
+                
+                # Try to create veth pair (ignore if exists)
+                run_cmd(f"ip link add {veth_host} type veth peer name {veth_ns}", ignore_exists=True)
+                
+                # Move one end to namespace
+                run_cmd(f"ip link set {veth_ns} netns {ns_name}", ignore_errors=True)
+                
+                # Configure host side
+                run_cmd(f"ip link set {veth_host} master {vpc.bridge}", ignore_exists=True)
+                run_cmd(f"ip link set {veth_host} up", ignore_errors=True)
+                
+                # Configure namespace side
+                run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up", ignore_errors=True)
+                run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}", ignore_exists=True)
+                run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip.split('/')[0]}", ignore_exists=True)
+                
+                print(f"✓ Fixed connectivity for {subnet_name}")
+            
+            # Add host routes to subnets
+            for subnet_name, subnet_info in vpc.subnets.items():
+                subnet_cidr = subnet_info["cidr"]
+                run_cmd(f"ip route add {subnet_cidr} dev {vpc.bridge}", ignore_exists=True)
+            
+            print(f"✓ Connectivity fixed for VPC {vpc_name}")
+            print("Web servers should now be accessible from host")
         
         else:
             Logger.error(f"Unknown command: {command}")

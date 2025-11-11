@@ -33,6 +33,9 @@
 - [ ] 4. Fix subnet creation with proper IP assignment and validation
   - Replace string manipulation in add_subnet() method with IPAddressUtils.get_subnet_ip()
   - Add validation that subnet CIDR fits within VPC CIDR using NetworkValidator
+
+
+
   - Update subnet IP assignment to use calculated valid IP addresses
   - Add subnet overlap detection to prevent conflicts
   - Write unit tests for subnet creation and validation scenarios
