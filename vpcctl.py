@@ -9,10 +9,26 @@ import json
 import sys
 import os
 from pathlib import Path
+import ipaddress
 
 # Configuration directory
 CONFIG_DIR = Path.home() / ".vpcctl"
 CONFIG_DIR.mkdir(exist_ok=True)
+
+class IPUtils:
+    """Simple IP address utilities"""
+    
+    @staticmethod
+    def get_gateway_ip(vpc_cidr):
+        """Get gateway IP (first usable IP in VPC range)"""
+        network = ipaddress.IPv4Network(vpc_cidr, strict=False)
+        return str(network.network_address + 1)
+    
+    @staticmethod
+    def get_subnet_ip(subnet_cidr):
+        """Get subnet interface IP (first usable IP in subnet)"""
+        network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+        return f"{network.network_address + 1}/{network.prefixlen}"
 
 class Logger:
     """Simple logging utility"""
@@ -69,8 +85,8 @@ class VPC:
         run_cmd(f"ip link set {self.bridge} up")
         
         # Assign gateway IP to bridge (first IP in range)
-        gateway_ip = self.cidr.replace('/16', '/24').replace('.0.0/', '.0.1/')
-        run_cmd(f"ip addr add {gateway_ip} dev {self.bridge}")
+        gateway_ip = IPUtils.get_gateway_ip(self.cidr)
+        run_cmd(f"ip addr add {gateway_ip}/{self.cidr.split('/')[1]} dev {self.bridge}")
         
         Logger.success(f"VPC {self.name} created with bridge {self.bridge}")
         self.save_config()
@@ -97,13 +113,13 @@ class VPC:
         run_cmd(f"ip link set {veth_ns} netns {ns_name}")
         
         # Configure namespace interface
-        subnet_ip = cidr.replace('/24', '/24').replace('.0/', '.10/')
+        subnet_ip = IPUtils.get_subnet_ip(cidr)
         run_cmd(f"ip netns exec {ns_name} ip addr add {subnet_ip} dev {veth_ns}")
         run_cmd(f"ip netns exec {ns_name} ip link set {veth_ns} up")
         run_cmd(f"ip netns exec {ns_name} ip link set lo up")
         
         # Add default route through bridge
-        gateway_ip = self.cidr.split('/')[0].rsplit('.', 1)[0] + '.0.1'
+        gateway_ip = IPUtils.get_gateway_ip(self.cidr)
         run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip}")
         
         # Store subnet info
