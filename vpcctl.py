@@ -412,6 +412,9 @@ def main():
             for bridge in bridges:
                 print(f"  - {bridge}")
             
+            # Check VPC configs
+            vpcs = list(CONFIG_DIR.glob("*.json")) if CONFIG_DIR.exists() else []
+            
             # Suggest recovery
             if namespaces and not vpcs:
                 print("\n⚠️  Found orphaned namespaces without VPC config!")
