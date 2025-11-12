@@ -15,11 +15,11 @@ fi
 # Delete all configured VPCs
 echo ""
 echo "Deleting VPCs..."
-./vpcctl list
+./vpcctl.py list
 
 for vpc in $(ls ~/.vpcctl/*.json 2>/dev/null | xargs -n1 basename | sed 's/.json//'); do
     echo "Deleting VPC: $vpc"
-    ./vpcctl delete "$vpc" || echo "Failed to delete $vpc"
+    ./vpcctl.py delete "$vpc" || echo "Failed to delete $vpc"
 done
 
 # Clean up any remaining namespaces
