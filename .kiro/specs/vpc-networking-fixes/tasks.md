@@ -12,7 +12,8 @@
   - Write unit tests for IP address calculations with various CIDR blocks
   - _Requirements: 1.1, 1.2, 2.1, 2.3, 5.1, 5.2_
 
-- [-] 2. Implement enhanced logging and error handling
+- [ ] 2. Implement enhanced logging and error handling
+
 
   - Extend Logger class with timestamp logging and debug levels
   - Add methods for logging IP calculations and command execution details

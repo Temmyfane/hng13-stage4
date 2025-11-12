@@ -8,6 +8,7 @@ import subprocess
 import json
 import sys
 import os
+import ipaddress
 from pathlib import Path
 import ipaddress
 
@@ -243,7 +244,7 @@ class VPC:
         Logger.success(f"VPC peering established between {self.name} and {other_vpc.name}")
     
     def deploy_webserver(self, subnet_name, port=8000):
-        """Deploy simple Python HTTP server in subnet"""
+        """Deploy simple Python server in subnet"""
         if subnet_name not in self.subnets:
             Logger.error(f"Subnet {subnet_name} not found")
             return
@@ -251,16 +252,19 @@ class VPC:
         ns_name = self.subnets[subnet_name]["namespace"]
         Logger.info(f"Deploying web server in {subnet_name} on port {port}")
         
-        # Create a simple index.html and start server on all interfaces
+        # Get the actual IP address assigned to the interface in the namespace
         subnet_cidr = self.subnets[subnet_name]["cidr"]
-        subnet_ip = IPUtils.get_subnet_ip(subnet_cidr).split('/')[0]
+        network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+        # Use the second IP in the subnet (first is gateway, second is for the interface)
+        interface_ip = str(network.network_address + 2)
+        
         cmd = f"""ip netns exec {ns_name} sh -c '
             mkdir -p /tmp/www
             echo "<h1>Hello from {subnet_name} in VPC {self.name}</h1>" > /tmp/www/index.html
-            cd /tmp/www && python3 -m http.server {port} --bind {subnet_ip} > /tmp/webserver.log 2>&1 &
+            cd /tmp/www && python3 -m http.server {port} --bind {interface_ip} > /tmp/webserver.log 2>&1 &
         '"""
         run_cmd(cmd)
-        Logger.success(f"Web server deployed at http://{subnet_ip}:{port}")
+        Logger.success(f"Web server deployed at http://{interface_ip}:{port}")
     
     def delete(self):
         """Delete VPC and all resources"""
