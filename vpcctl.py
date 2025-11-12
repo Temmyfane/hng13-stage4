@@ -183,15 +183,19 @@ class VPC:
         run_cmd(f"iptables -A FORWARD -i {internet_interface} -o {self.bridge} -m state --state RELATED,ESTABLISHED -j ACCEPT")
         
         # Add default routes in namespaces for internet access
+        # Use the VPC-wide gateway IP (first IP in VPC CIDR)
+        vpc_network = ipaddress.IPv4Network(self.cidr, strict=False)
+        vpc_gateway_ip = str(vpc_network.network_address + 1)
+        
         for subnet_name, subnet_info in self.subnets.items():
             ns_name = subnet_info["namespace"]
-            subnet_cidr = subnet_info["cidr"]
-            network = ipaddress.IPv4Network(subnet_cidr, strict=False)
-            gateway_ip = str(network.network_address + 1)  # Bridge IP is first IP in subnet
             
-            # Add default route via bridge gateway
-            run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip}", ignore_errors=True)
-            Logger.info(f"Added default route in {ns_name} via {gateway_ip}")
+            # Remove any existing default route first
+            run_cmd(f"ip netns exec {ns_name} ip route del default", ignore_errors=True)
+            
+            # Add default route via VPC bridge gateway
+            run_cmd(f"ip netns exec {ns_name} ip route add default via {vpc_gateway_ip}", ignore_errors=True)
+            Logger.info(f"Added default route in {ns_name} via {vpc_gateway_ip}")
         
         Logger.success("NAT gateway enabled")
     
