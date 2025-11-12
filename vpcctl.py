@@ -259,9 +259,9 @@ class VPC:
         interface_ip = str(network.network_address + 2)
         
         cmd = f"""ip netns exec {ns_name} sh -c '
-            mkdir -p /tmp/www
-            echo "<h1>Hello from {subnet_name} in VPC {self.name}</h1>" > /tmp/www/index.html
-            cd /tmp/www && python3 -m http.server {port} --bind {interface_ip} > /tmp/webserver.log 2>&1 &
+            mkdir -p /tmp/www-{subnet_name}
+            echo "<h1>Hello from {subnet_name} in VPC {self.name}</h1>" > /tmp/www-{subnet_name}/index.html
+            cd /tmp/www-{subnet_name} && python3 -m http.server {port} --bind {interface_ip} > /tmp/webserver-{subnet_name}.log 2>&1 &
         '"""
         run_cmd(cmd)
         Logger.success(f"Web server deployed at http://{interface_ip}:{port}")
@@ -398,6 +398,24 @@ def main():
             port = int(sys.argv[4]) if len(sys.argv) > 4 else 8000
             vpc = VPC.load(vpc_name)
             vpc.deploy_webserver(subnet_name, port)
+        
+        elif command == "redeploy-web":
+            validate_args(command, 2, "Usage: vpcctl redeploy-web <vpc-name>")
+            vpc_name = sys.argv[2]
+            vpc = VPC.load(vpc_name)
+            
+            # Kill existing web servers and redeploy
+            Logger.info(f"Redeploying web servers for VPC {vpc_name}")
+            for subnet_name in vpc.subnets.keys():
+                ns_name = vpc.subnets[subnet_name]["namespace"]
+                # Kill existing python web servers
+                run_cmd(f"ip netns exec {ns_name} pkill -f 'python3.*http.server'", ignore_errors=True)
+            
+            # Deploy web servers with appropriate ports
+            subnet_names = list(vpc.subnets.keys())
+            for i, subnet_name in enumerate(subnet_names):
+                port = 8000 + i
+                vpc.deploy_webserver(subnet_name, port)
         
         elif command == "show":
             vpc_name = sys.argv[2]
