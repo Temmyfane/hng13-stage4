@@ -182,6 +182,17 @@ class VPC:
         run_cmd(f"iptables -A FORWARD -i {self.bridge} -o {internet_interface} -j ACCEPT")
         run_cmd(f"iptables -A FORWARD -i {internet_interface} -o {self.bridge} -m state --state RELATED,ESTABLISHED -j ACCEPT")
         
+        # Add default routes in namespaces for internet access
+        for subnet_name, subnet_info in self.subnets.items():
+            ns_name = subnet_info["namespace"]
+            subnet_cidr = subnet_info["cidr"]
+            network = ipaddress.IPv4Network(subnet_cidr, strict=False)
+            gateway_ip = str(network.network_address + 1)  # Bridge IP is first IP in subnet
+            
+            # Add default route via bridge gateway
+            run_cmd(f"ip netns exec {ns_name} ip route add default via {gateway_ip}", ignore_errors=True)
+            Logger.info(f"Added default route in {ns_name} via {gateway_ip}")
+        
         Logger.success("NAT gateway enabled")
     
     def apply_firewall(self, policy_file):
