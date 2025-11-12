@@ -31,7 +31,7 @@ class IPUtils:
         return f"{network.network_address + 1}/{network.prefixlen}"
 
 class Logger:
-    """Simple logging utility"""
+    """Simple logging utility with enhanced error handling"""
     @staticmethod
     def info(msg):
         print(f"[INFO] {msg}")
@@ -47,6 +47,19 @@ class Logger:
     @staticmethod
     def warn(msg):
         print(f"[WARN] ⚠ {msg}")
+    
+    @staticmethod
+    def usage_error(msg, usage_hint=None):
+        """Log usage errors with helpful hints"""
+        print(f"[ERROR] ✗ {msg}", file=sys.stderr)
+        if usage_hint:
+            print(f"[HINT] {usage_hint}", file=sys.stderr)
+    
+    @staticmethod
+    def command_failed(cmd, error):
+        """Log command failures with details"""
+        print(f"[ERROR] ✗ Command failed: {cmd}", file=sys.stderr)
+        print(f"[ERROR] ✗ Error: {error}", file=sys.stderr)
 
 def run_cmd(cmd, check=True, capture=True, ignore_exists=False, ignore_errors=False, capture_output=False):
     """Execute shell command with logging"""
@@ -83,8 +96,8 @@ def run_cmd(cmd, check=True, capture=True, ignore_exists=False, ignore_errors=Fa
             Logger.warn(f"Command failed but ignoring: {cmd}")
             return None
         
-        Logger.error(f"Command failed: {e}")
-        if capture:
+        Logger.command_failed(cmd, str(e))
+        if capture and hasattr(e, 'stderr') and e.stderr:
             Logger.error(f"Output: {e.stderr}")
         raise
 
@@ -316,6 +329,12 @@ class VPC:
             print("\nNo subnets configured")
         print()
 
+def validate_args(command, min_args, usage_hint):
+    """Validate command line arguments"""
+    if len(sys.argv) < min_args:
+        Logger.usage_error(f"Not enough arguments for '{command}' command", usage_hint)
+        sys.exit(1)
+
 def main():
     """Main CLI entry point"""
     if len(sys.argv) < 2:
@@ -341,12 +360,14 @@ def main():
     
     try:
         if command == "create":
+            validate_args(command, 4, "Usage: vpcctl create <vpc-name> <cidr>")
             vpc_name = sys.argv[2]
             cidr = sys.argv[3]
             vpc = VPC(vpc_name, cidr)
             vpc.create()
         
         elif command == "add-subnet":
+            validate_args(command, 5, "Usage: vpcctl add-subnet <vpc-name> <subnet-name> <cidr> [type]")
             vpc_name = sys.argv[2]
             subnet_name = sys.argv[3]
             cidr = sys.argv[4]
@@ -367,6 +388,7 @@ def main():
             vpc.apply_firewall(policy_file)
         
         elif command == "deploy-web":
+            validate_args(command, 4, "Usage: vpcctl deploy-web <vpc-name> <subnet-name> [port]")
             vpc_name = sys.argv[2]
             subnet_name = sys.argv[3]
             port = int(sys.argv[4]) if len(sys.argv) > 4 else 8000
